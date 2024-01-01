@@ -1,27 +1,29 @@
-package main
+package command
 
 import (
 	"bytes"
 	"fmt"
+	"redis-lite/resp"
+	"redis-lite/util"
 )
 
 type Operation struct {
 }
 
 func (operation *Operation) Handle(buffer []byte) string {
-	command := ClearAllZeroBytes(buffer)
+	command := util.ClearAllZeroBytes(buffer)
 	fmt.Println(string(command))
 	checkByteHasTerminatorAtTheEndOfTheArray(command)
-	splitCommand := bytes.Split(command, SeparatorBytes)
-	val, _ := parseResp(splitCommand)
+	splitCommand := bytes.Split(command, util.SeparatorBytes)
+	val, _ := resp.ParseResp(splitCommand)
 	//not sure of this
-	strArr := convertInterfaceToStringArr(val)
+	strArr := util.ConvertInterfaceToStringArr(val)
 	result := CommandFactory(strArr).execute(strArr)
 	return result.(string)
 }
 
 func checkByteHasTerminatorAtTheEndOfTheArray(command []byte) {
-	if command[len(command)-2] != CarriageReturn || command[len(command)-1] != NewLine {
+	if command[len(command)-2] != util.CarriageReturn || command[len(command)-1] != util.NewLine {
 		panic("wrong terminator operator for basic string")
 	}
 }

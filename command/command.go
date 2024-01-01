@@ -1,10 +1,16 @@
-package main
+package command
 
 import (
 	"fmt"
+	"redis-lite/db"
+	"redis-lite/resp"
+	"redis-lite/util"
+	"slices"
 	"strconv"
 	"strings"
 )
+
+var expiryCommands = []string{"EX", "PX"}
 
 func CommandFactory(arr []string) Command {
 	head := arr[0]
@@ -42,33 +48,55 @@ type Ping struct {
 }
 
 func (ping Ping) execute(arr []string) interface{} {
-	return Serialize("PONG")
+	return resp.Serialize("PONG")
 }
 
 type Set struct {
 }
 
 func (set Set) execute(arr []string) interface{} {
-	GetStorage().set(arr[1], arr[2])
-	return Serialize("OK")
+	var exValue = 0
+	var exType string
+	for i := 3; i < len(arr); i++ {
+		upperVal := strings.ToUpper(arr[i])
+		if slices.Contains(expiryCommands, upperVal) {
+			if i+1 >= len(arr) {
+				panic("if you use EX or PX command with set, you have to provide seconds or milliseconds")
+			}
+			exSec, err := strconv.Atoi(arr[i+1])
+			if err != nil {
+				panic("expiration time must be an integer")
+			}
+			exValue = exSec
+			exType = upperVal
+		}
+	}
+	key := arr[1]
+	value := arr[2]
+	if exValue > 0 {
+		db.GetStorage().SetWithOptions(key, value, db.SetOption{ExpireValue: exValue, ExpiryType: exType})
+	} else {
+		db.GetStorage().Set(key, value)
+	}
+	return resp.Serialize("OK")
 }
 
 type Get struct {
 }
 
 func (get Get) execute(arr []string) interface{} {
-	value := GetStorage().get(arr[1])
-	return Serialize(value)
+	value := db.GetStorage().Get(arr[1])
+	return resp.Serialize(value)
 }
 
 type Exists struct {
 }
 
 func (exist Exists) execute(arr []string) interface{} {
-	if GetStorage().exists(arr[1]) {
-		return Serialize(1)
+	if db.GetStorage().Exists(arr[1]) {
+		return resp.Serialize(1)
 	}
-	return Serialize(0)
+	return resp.Serialize(0)
 }
 
 type Del struct {
@@ -77,34 +105,34 @@ type Del struct {
 func (del Del) execute(arr []string) interface{} {
 	var removedCount = 0
 	for _, s := range arr[1:] {
-		b := GetStorage().delete(s)
+		b := db.GetStorage().Delete(s)
 		if b {
 			removedCount++
 		}
 	}
-	return Serialize(removedCount)
+	return resp.Serialize(removedCount)
 }
 
 type Incr struct {
 }
 
 func (incr Incr) execute(arr []string) interface{} {
-	storage := GetStorage()
+	storage := db.GetStorage()
 	key := arr[1]
-	value := storage.get(key)
+	value := storage.Get(key)
 	if value == nil {
 		newValue := 1
-		storage.set(key, strconv.Itoa(newValue))
-		return Serialize(newValue)
+		storage.Set(key, strconv.Itoa(newValue))
+		return resp.Serialize(newValue)
 	}
-	valueAsString := ParseStringFromInterface(value)
+	valueAsString := util.ParseStringFromInterface(value)
 	intValue, err := strconv.Atoi(valueAsString)
 	if err != nil {
 		panic(fmt.Sprintf("key holds not an integer value. key : %s, value : %s ", arr[1], valueAsString))
 	}
 	newValue := intValue + 1
-	storage.set(key, strconv.Itoa(newValue))
-	return Serialize(newValue)
+	storage.Set(key, strconv.Itoa(newValue))
+	return resp.Serialize(newValue)
 
 }
 
@@ -112,23 +140,23 @@ type Decr struct {
 }
 
 func (decr Decr) execute(arr []string) interface{} {
-	storage := GetStorage()
+	storage := db.GetStorage()
 	key := arr[1]
-	value := storage.get(key)
+	value := storage.Get(key)
 	if value == nil {
 		newValue := -1
-		storage.set(key, strconv.Itoa(newValue))
-		return Serialize(newValue)
+		storage.Set(key, strconv.Itoa(newValue))
+		return resp.Serialize(newValue)
 	}
-	valueAsString := ParseStringFromInterface(value)
+	valueAsString := util.ParseStringFromInterface(value)
 
 	intValue, err := strconv.Atoi(valueAsString)
 	if err != nil {
 		panic(fmt.Sprintf("key holds not an integer value. key : %s, value : %s ", arr[1], valueAsString))
 	}
 	newValue := intValue - 1
-	storage.set(key, strconv.Itoa(newValue))
-	return Serialize(newValue)
+	storage.Set(key, strconv.Itoa(newValue))
+	return resp.Serialize(newValue)
 
 }
 
@@ -136,50 +164,50 @@ type LPush struct {
 }
 
 func (lPush LPush) execute(arr []string) interface{} {
-	storage := GetStorage()
+	storage := db.GetStorage()
 	key := arr[1]
 	val := arr[2]
-	value := storage.get(key)
+	value := storage.Get(key)
 	if value == nil {
 		newValue := []interface{}{val}
-		storage.setArray(key, newValue)
-		return Serialize(len(newValue))
+		storage.SetArray(key, newValue)
+		return resp.Serialize(len(newValue))
 	}
-	if !IsArray(value) {
+	if !util.IsArray(value) {
 		panic(fmt.Sprintf("key does not hold an array. key: %s, value: %s", key, value))
 	}
-	array := storage.get(key).([]interface{})
+	array := storage.Get(key).([]interface{})
 	newArray := make([]interface{}, 0)
 	newArray = append(newArray, val)
 	for _, v := range array {
 		newArray = append(newArray, v)
 	}
-	storage.setArray(key, newArray)
-	return Serialize(len(newArray))
+	storage.SetArray(key, newArray)
+	return resp.Serialize(len(newArray))
 }
 
 type LRange struct {
 }
 
 func (lRange LRange) execute(arr []string) interface{} {
-	storage := GetStorage()
+	storage := db.GetStorage()
 	key := arr[1]
 	start, err := strconv.Atoi(arr[2])
 	stop, err2 := strconv.Atoi(arr[3])
 	if err != nil || err2 != nil {
 		panic(fmt.Sprintf("start and stop values must be integer"))
 	}
-	value := storage.get(key)
+	value := storage.Get(key)
 	if value == nil {
-		return Serialize(nil)
+		return resp.Serialize(nil)
 	}
-	if !IsArray(value) {
+	if !util.IsArray(value) {
 		panic(fmt.Sprintf("key does not hold an array. key: %s, value: %s", key, value))
 	}
-	array := storage.get(key).([]interface{})
+	array := storage.Get(key).([]interface{})
 
 	if start > len(array)-1 || start > stop {
-		return Serialize(make([]interface{}, 0))
+		return resp.Serialize(make([]interface{}, 0))
 	}
 	if stop > len(array)-1 {
 		stop = len(array) - 1
@@ -190,5 +218,5 @@ func (lRange LRange) execute(arr []string) interface{} {
 	} else if start < len(array)*-1 {
 		start = 0
 	}
-	return Serialize(array[start : stop+1])
+	return resp.Serialize(array[start : stop+1])
 }

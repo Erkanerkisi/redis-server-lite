@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"bytes"
@@ -71,7 +71,7 @@ func IsInt(val interface{}) bool {
 	return false
 }
 
-func convertInterfaceToStringArr(arr interface{}) []string {
+func ConvertInterfaceToStringArr(arr interface{}) []string {
 	array := arr.([]interface{})
 	stringSlice := make([]string, len(array))
 	for i, v := range array {

@@ -1,28 +1,29 @@
-package main
+package resp
 
 import (
 	"fmt"
+	"redis-lite/util"
 	"reflect"
 	"strconv"
 	"strings"
 )
 
-func parseResp(splitCommand [][]byte) (interface{}, int) {
+func ParseResp(splitCommand [][]byte) (interface{}, int) {
 	firstElement := splitCommand[0][0]
 	switch firstElement {
-	case Colon:
+	case util.Colon:
 		{
 			return parseNumber(splitCommand)
 		}
-	case Plus, Dash:
+	case util.Plus, util.Dash:
 		{
 			return parseSimple(splitCommand)
 		}
-	case DollarSign:
+	case util.DollarSign:
 		{
 			return parseBulkString(splitCommand)
 		}
-	case Star:
+	case util.Star:
 		{
 			return parseArray(splitCommand)
 		}
@@ -51,7 +52,7 @@ func parseArray(command [][]byte) ([]interface{}, int) {
 	var arr = make([]interface{}, sizeOfTheArray)
 	index := 0
 	for i := 1; i <= sizeOfTheArray; i++ {
-		val, idx := parseResp(command[i+index:])
+		val, idx := ParseResp(command[i+index:])
 		arr[i-1] = val
 		index += idx
 	}
@@ -59,14 +60,14 @@ func parseArray(command [][]byte) ([]interface{}, int) {
 }
 
 func Serialize(val interface{}) string {
-	if IsInt(val) {
+	if util.IsInt(val) {
 		value := (val).(int)
-		return fmt.Sprintf(":%d%s", value, CRLF)
+		return fmt.Sprintf(":%d%s", value, util.CRLF)
 	} else if val == nil || (reflect.ValueOf(val).IsZero() && reflect.ValueOf(val).IsNil()) {
 		return fmt.Sprintf("$-1\r\n")
-	} else if ok, v := IsString(val); ok {
-		return fmt.Sprintf("$%d%s%s%s", len(v), CRLF, v, CRLF)
-	} else if IsArray(val) {
+	} else if ok, v := util.IsString(val); ok {
+		return fmt.Sprintf("$%d%s%s%s", len(v), util.CRLF, v, util.CRLF)
+	} else if util.IsArray(val) {
 		value := (val).([]interface{})
 		return serializeArray(value)
 	}
@@ -77,7 +78,7 @@ func serializeArray(val []interface{}) string {
 	var sb = strings.Builder{}
 	sb.WriteString("*")
 	sb.WriteString(strconv.Itoa(len(val)))
-	sb.WriteString(CRLF)
+	sb.WriteString(util.CRLF)
 	for i := 0; i < len(val); i++ {
 		serializedData := Serialize(val[i])
 		sb.WriteString(serializedData)

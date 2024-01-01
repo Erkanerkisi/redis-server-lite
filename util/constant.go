@@ -1,4 +1,4 @@
-package main
+package util
 
 var Plus byte = 43           // +
 var CarriageReturn byte = 13 // \r
