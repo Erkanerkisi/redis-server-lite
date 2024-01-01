@@ -33,8 +33,6 @@ func CommandFactory(arr []string) Command {
 		return LPush{}
 	case "LRANGE":
 		return LRange{}
-	case "CONFIG":
-		return Ping{}
 	default:
 		panic("unrecognized command detected.")
 	}
